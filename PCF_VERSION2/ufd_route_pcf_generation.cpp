@@ -1092,6 +1092,11 @@ static int build_pipeline_ref( tag_t part_tag,
    time_t ltime;
    struct tm *today;
 
+   UF_ATTR_info_t MLI_info;
+   UF_ATTR_info_t REVISION_info;
+   logical has_attr = false;
+   char additional_string[100];
+
    /*
    ** Build the Pipeline Reference section.  Use the input part name as the
    ** pipeline name and the system date for the date.  The month values run 
@@ -1129,7 +1134,26 @@ static int build_pipeline_ref( tag_t part_tag,
    sprintf( pcf_string, DATE_FMT, date_buffer );
 
    status = write_string( pcf_string, pcf_stream );
- 
+
+   UF_ATTR_get_user_attribute_with_title_and_type(part_tag, "MLI", UF_ATTR_string, UF_ATTR_NOT_ARRAY, &MLI_info, &has_attr);
+   if(has_attr)
+   {
+	   sprintf(additional_string,"    PROJECT-IDENTIFIER  MLI %s\n", MLI_info.string_value);
+	   status = write_string( additional_string, pcf_stream );
+	   memset(additional_string,0,sizeof(additional_string)/sizeof(char));
+	   has_attr = false;
+	   UF_ATTR_free_user_attribute_info_strings(&MLI_info);
+   }
+   UF_ATTR_get_user_attribute_with_title_and_type(part_tag, "REVISION", UF_ATTR_string, UF_ATTR_NOT_ARRAY, &REVISION_info, &has_attr);
+   if(has_attr)
+   {
+	   sprintf(additional_string,"    REVISION            %s\n", REVISION_info.string_value);
+	   status = write_string( additional_string, pcf_stream );
+	   memset(additional_string,0,sizeof(additional_string)/sizeof(char));
+	   has_attr = false;
+	   UF_ATTR_free_user_attribute_info_strings(&REVISION_info);
+   }
+
    UF_free( pcf_string );
 
 
@@ -2706,102 +2730,103 @@ static int build_components( tag_t part_tag,
 			weld_endpoint[0] = point.X;
 			weld_endpoint[1] = point.Y;
 			weld_endpoint[2] = point.Z;
-		}
-		coordinate_transform(weld_endpoint, weld_endpoint_r);
-		for (int count = 0; count < label_coordinate[0].size(); count++)
-		{
-			double label_point[3]={label_coordinate[0][count],label_coordinate[1][count],label_coordinate[2][count]};
-			if(check_same_point(weld_endpoint, label_point))
+
+			coordinate_transform(weld_endpoint, weld_endpoint_r);
+			for (int count = 0; count < label_coordinate[0].size(); count++)
 			{
-				diameter = label_coordinate[3][count];
-				break;
-			}
-		}
-		
-		bool tack_weld = false;
-		bool tack_weld_extra_length = false;
-		for(int k = 0; k < title.size() ; k++)
-		{
-			char *title_str = new char[strlen(title[k].GetLocaleText())+1];
-			strcpy(title_str, title[k].GetLocaleText());
-			if(strstr(title_str,"TACK WELD")!= NULL)
-			{
-				tack_weld = true;
-			}
-			if(strstr(title_str,"EXTRA LENGTH")!=NULL)
-			{
-				tack_weld_extra_length = true;
-			}
-		}
-		
-		if(tack_weld && tack_weld_extra_length)
-		{
-			bool overlap = false;
-			vector<weldinfo>::iterator overlap_count;
-			for(vector<weldinfo>::iterator it = additional_weld.begin();it!=additional_weld.end();it++)
-			{
-				weldinfo temp_weld = *it;
-				if(check_same_point(weld_endpoint_r,temp_weld.point_1) || check_same_point(weld_endpoint_r,temp_weld.point_2))
+				double label_point[3]={label_coordinate[0][count],label_coordinate[1][count],label_coordinate[2][count]};
+				if(check_same_point(weld_endpoint, label_point))
 				{
-					overlap = true;
-					overlap_count = it;
+					diameter = label_coordinate[3][count];
 					break;
 				}
 			}
-			if(overlap)
+
+			bool tack_weld = false;
+			bool tack_weld_extra_length = false;
+			for(int k = 0; k < title.size() ; k++)
 			{
-				weldinfo overlap_weld = *overlap_count;
-				write_string("WELD\n",pcf_stream);
-				write_end_points( overlap_weld.point_1, overlap_weld.point_2, overlap_weld.diameter_1, overlap_weld.diameter_2, pcf_stream ); 
-				sprintf( skey_string, COMP_SKEY_FMT, "WF"); 
-				write_string( skey_string, pcf_stream );
-				sprintf( category_string, "    CATEGORY %s\n", "ERECTION"); 
-				write_string( category_string, pcf_stream );
-				additional_weld.erase(overlap_count);
-			}else
-			{
-				write_string("WELD\n",pcf_stream);
-				write_end_points( weld_endpoint_r, weld_endpoint_r, diameter, diameter, pcf_stream ); 
-				sprintf( skey_string, COMP_SKEY_FMT, "WF"); 
-				write_string( skey_string, pcf_stream );
-				sprintf( category_string, "    CATEGORY %s\n", "ERECTION"); 
-				write_string( category_string, pcf_stream );
+				char *title_str = new char[strlen(title[k].GetLocaleText())+1];
+				strcpy(title_str, title[k].GetLocaleText());
+				if(strstr(title_str,"TACK WELD")!= NULL)
+				{
+					tack_weld = true;
+				}
+				if(strstr(title_str,"EXTRA LENGTH")!=NULL)
+				{
+					tack_weld_extra_length = true;
+				}
 			}
-		}
+		
+			if(tack_weld && tack_weld_extra_length)
+			{
+				bool overlap = false;
+				vector<weldinfo>::iterator overlap_count;
+				for(vector<weldinfo>::iterator it = additional_weld.begin();it!=additional_weld.end();it++)
+				{
+					weldinfo temp_weld = *it;
+					if(check_same_point(weld_endpoint_r,temp_weld.point_1) || check_same_point(weld_endpoint_r,temp_weld.point_2))
+					{
+						overlap = true;
+						overlap_count = it;
+						break;
+					}
+				}
+				if(overlap)
+				{
+					weldinfo overlap_weld = *overlap_count;
+					write_string("WELD\n",pcf_stream);
+					write_end_points( overlap_weld.point_1, overlap_weld.point_2, overlap_weld.diameter_1, overlap_weld.diameter_2, pcf_stream ); 
+					sprintf( skey_string, COMP_SKEY_FMT, "WF"); 
+					write_string( skey_string, pcf_stream );
+					sprintf( category_string, "    CATEGORY %s\n", "ERECTION"); 
+					write_string( category_string, pcf_stream );
+					additional_weld.erase(overlap_count);
+				}else
+				{
+					write_string("WELD\n",pcf_stream);
+					write_end_points( weld_endpoint_r, weld_endpoint_r, diameter, diameter, pcf_stream ); 
+					sprintf( skey_string, COMP_SKEY_FMT, "WF"); 
+					write_string( skey_string, pcf_stream );
+					sprintf( category_string, "    CATEGORY %s\n", "ERECTION"); 
+					write_string( category_string, pcf_stream );
+				}
+			}
 			
-		if(tack_weld && !tack_weld_extra_length){
-			bool overlap = false;
-			vector<weldinfo>::iterator overlap_count;
-			for(vector<weldinfo>::iterator it = additional_weld.begin();it!=additional_weld.end();it++)
-			{
-				weldinfo temp_weld = *it;
-				if(check_same_point(weld_endpoint_r,temp_weld.point_1) || check_same_point(weld_endpoint_r,temp_weld.point_2))
+			if(tack_weld && !tack_weld_extra_length){
+				bool overlap = false;
+				vector<weldinfo>::iterator overlap_count;
+				for(vector<weldinfo>::iterator it = additional_weld.begin();it!=additional_weld.end();it++)
 				{
-					overlap = true;
-					overlap_count = it;
-					break;
+					weldinfo temp_weld = *it;
+					if(check_same_point(weld_endpoint_r,temp_weld.point_1) || check_same_point(weld_endpoint_r,temp_weld.point_2))
+					{
+						overlap = true;
+						overlap_count = it;
+						break;
+					}
+				}
+				if(overlap)
+				{
+					weldinfo overlap_weld = *overlap_count;
+					write_string("WELD\n",pcf_stream);
+					write_end_points( overlap_weld.point_1, overlap_weld.point_2, overlap_weld.diameter_1, overlap_weld.diameter_2, pcf_stream ); 
+					sprintf( skey_string, COMP_SKEY_FMT, "WS"); 
+					write_string( skey_string, pcf_stream );
+					sprintf( category_string, "    CATEGORY %s\n", "ERECTION"); 
+					write_string( category_string, pcf_stream );
+					additional_weld.erase(overlap_count);
+				}else
+				{
+					write_string("WELD\n",pcf_stream);
+					write_end_points( weld_endpoint_r, weld_endpoint_r, diameter, diameter, pcf_stream ); 
+					sprintf( skey_string, COMP_SKEY_FMT, "WS"); 
+					write_string( skey_string, pcf_stream );
+					sprintf( category_string, "    CATEGORY %s\n", "ERECTION"); 
+					write_string( category_string, pcf_stream );
 				}
 			}
-			if(overlap)
-			{
-				weldinfo overlap_weld = *overlap_count;
-				write_string("WELD\n",pcf_stream);
-				write_end_points( overlap_weld.point_1, overlap_weld.point_2, overlap_weld.diameter_1, overlap_weld.diameter_2, pcf_stream ); 
-				sprintf( skey_string, COMP_SKEY_FMT, "WS"); 
-				write_string( skey_string, pcf_stream );
-				sprintf( category_string, "    CATEGORY %s\n", "ERECTION"); 
-				write_string( category_string, pcf_stream );
-				additional_weld.erase(overlap_count);
-			}else
-			{
-				write_string("WELD\n",pcf_stream);
-				write_end_points( weld_endpoint_r, weld_endpoint_r, diameter, diameter, pcf_stream ); 
-				sprintf( skey_string, COMP_SKEY_FMT, "WS"); 
-				write_string( skey_string, pcf_stream );
-				sprintf( category_string, "    CATEGORY %s\n", "ERECTION"); 
-				write_string( category_string, pcf_stream );
-			}
-		}	
+		}		
 	}
 	
 	//write fabrication weld
