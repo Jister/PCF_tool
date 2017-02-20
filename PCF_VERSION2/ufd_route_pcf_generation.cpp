@@ -344,8 +344,8 @@ extern DllExport void ufusr( char *parm, int *returnCode, int rlen )
 			strcpy(name,components[it_comp]->DisplayName().GetText());
 			char *X06EA = strstr(name, "X06EA");
 			char *X06EB = strstr(name, "X06EB");
-			char *x372A1911 = strstr(name, "372A1911");
-			char *x372A1913 = strstr(name, "372A1913");
+			//char *x372A1911 = strstr(name, "372A1911");
+			//char *x372A1913 = strstr(name, "372A1913");
 			if((X06EA != NULL) || (X06EB != NULL))
 			{
 				NXOpen::PartLoadStatus *partloadstatus1;
@@ -377,17 +377,17 @@ extern DllExport void ufusr( char *parm, int *returnCode, int rlen )
 				
 			}
 
-			if(x372A1911 != NULL)
-			{
-				components[it_comp]->SetUserAttribute("ISOGEN_COMPONENT_ID", -1, "LAPJOINT-STUBEND", NXOpen::Update::OptionNow);
-				components[it_comp]->SetUserAttribute("ISOGEN_SKEY", -1, "FLSE", NXOpen::Update::OptionNow);
-			}
+			//if(x372A1911 != NULL)
+			//{
+			//	components[it_comp]->SetUserAttribute("ISOGEN_COMPONENT_ID", -1, "LAPJOINT-STUBEND", NXOpen::Update::OptionNow);
+			//	components[it_comp]->SetUserAttribute("ISOGEN_SKEY", -1, "FLSE", NXOpen::Update::OptionNow);
+			//}
 
-			if(x372A1913 != NULL)
-			{
-				components[it_comp]->SetUserAttribute("ISOGEN_COMPONENT_ID", -1, "FLANGE", NXOpen::Update::OptionNow);
-				components[it_comp]->SetUserAttribute("ISOGEN_SKEY", -1, "FLSE", NXOpen::Update::OptionNow);
-			}
+			//if(x372A1913 != NULL)
+			//{
+			//	components[it_comp]->SetUserAttribute("ISOGEN_COMPONENT_ID", -1, "FLANGE", NXOpen::Update::OptionNow);
+			//	components[it_comp]->SetUserAttribute("ISOGEN_SKEY", -1, "FLSE", NXOpen::Update::OptionNow);
+			//}
 		}
 		//================================================================
 		status = create_component_file( UF_ASSEM_ask_work_part(), pcf_name ); 
@@ -1096,6 +1096,7 @@ static int build_pipeline_ref( tag_t part_tag,
    UF_ATTR_info_t REVISION_info;
    logical has_attr = false;
    char additional_string[100];
+   char attribute_string[200];
 
    /*
    ** Build the Pipeline Reference section.  Use the input part name as the
@@ -1153,6 +1154,35 @@ static int build_pipeline_ref( tag_t part_tag,
 	   has_attr = false;
 	   UF_ATTR_free_user_attribute_info_strings(&REVISION_info);
    }
+
+	NXOpen::Annotations::NoteCollection::iterator it_note;
+	for(it_note = workPart->Notes()->begin() ; it_note != workPart->Notes()->end() ; it_note ++ )				
+	{
+		Annotations::Note* note = (Annotations::Note*) *it_note;
+		if(note != NULL)
+		{
+			std::vector<NXString> title = note->GetText();
+			if(title.size()> 0)
+			{
+				//char *title_str = new char[strlen(title[0].GetLocaleText())+1];
+				//strcpy(title_str, title[0].GetLocaleText());
+				if(strcmp(title[0].GetLocaleText(),"NOTES:")== 0)
+				{
+					int count = 0;
+					for(int k=1; k<title.size(); k++)
+					{
+						if(strlen(title[k].GetLocaleText())>0)
+						{
+							sprintf(attribute_string,"    ATTRIBUTE%d         %s\n", count+10, title[k].GetLocaleText());
+							status = write_string( attribute_string, pcf_stream );
+							count++;
+						}
+					}
+				}
+			}
+		}
+	}
+
 
    UF_free( pcf_string );
 
@@ -2167,7 +2197,7 @@ static int build_components( tag_t part_tag,
 		char *title_str = new char[strlen(title[0].GetLocaleText())+1];
 		strcpy(title_str, title[0].GetLocaleText());
 
-		if(strstr(title_str, "TACK WELD") != NULL)
+		if(strstr(title_str, "TACK WELD") != NULL || strstr(title_str, "EXTRA LENGTH") != NULL)
 		{
 			Annotations::LeaderBuilder *leader_builder =  workPart->Annotations()->CreateDraftingNoteBuilder(label)->Leader();
 			Annotations::LeaderDataList *leader_data_list = leader_builder->Leaders();
@@ -2743,7 +2773,7 @@ static int build_components( tag_t part_tag,
 			}
 
 			bool tack_weld = false;
-			bool tack_weld_extra_length = false;
+			bool extra_length = false;
 			for(int k = 0; k < title.size() ; k++)
 			{
 				char *title_str = new char[strlen(title[k].GetLocaleText())+1];
@@ -2754,11 +2784,11 @@ static int build_components( tag_t part_tag,
 				}
 				if(strstr(title_str,"EXTRA LENGTH")!=NULL)
 				{
-					tack_weld_extra_length = true;
+					extra_length = true;
 				}
 			}
 		
-			if(tack_weld && tack_weld_extra_length)
+			if(!tack_weld && extra_length)
 			{
 				bool overlap = false;
 				vector<weldinfo>::iterator overlap_count;
@@ -2792,8 +2822,8 @@ static int build_components( tag_t part_tag,
 					write_string( category_string, pcf_stream );
 				}
 			}
-			
-			if(tack_weld && !tack_weld_extra_length){
+
+			if(tack_weld && extra_length){
 				bool overlap = false;
 				vector<weldinfo>::iterator overlap_count;
 				for(vector<weldinfo>::iterator it = additional_weld.begin();it!=additional_weld.end();it++)
@@ -2811,7 +2841,7 @@ static int build_components( tag_t part_tag,
 					weldinfo overlap_weld = *overlap_count;
 					write_string("WELD\n",pcf_stream);
 					write_end_points( overlap_weld.point_1, overlap_weld.point_2, overlap_weld.diameter_1, overlap_weld.diameter_2, pcf_stream ); 
-					sprintf( skey_string, COMP_SKEY_FMT, "WS"); 
+					sprintf( skey_string, COMP_SKEY_FMT, "WFT"); 
 					write_string( skey_string, pcf_stream );
 					sprintf( category_string, "    CATEGORY %s\n", "ERECTION"); 
 					write_string( category_string, pcf_stream );
@@ -2820,12 +2850,47 @@ static int build_components( tag_t part_tag,
 				{
 					write_string("WELD\n",pcf_stream);
 					write_end_points( weld_endpoint_r, weld_endpoint_r, diameter, diameter, pcf_stream ); 
-					sprintf( skey_string, COMP_SKEY_FMT, "WS"); 
+					sprintf( skey_string, COMP_SKEY_FMT, "WFT"); 
 					write_string( skey_string, pcf_stream );
 					sprintf( category_string, "    CATEGORY %s\n", "ERECTION"); 
 					write_string( category_string, pcf_stream );
 				}
 			}
+			
+			if(tack_weld && !extra_length){
+				bool overlap = false;
+				vector<weldinfo>::iterator overlap_count;
+				for(vector<weldinfo>::iterator it = additional_weld.begin();it!=additional_weld.end();it++)
+				{
+					weldinfo temp_weld = *it;
+					if(check_same_point(weld_endpoint_r,temp_weld.point_1) || check_same_point(weld_endpoint_r,temp_weld.point_2))
+					{
+						overlap = true;
+						overlap_count = it;
+						break;
+					}
+				}
+				if(overlap)
+				{
+					weldinfo overlap_weld = *overlap_count;
+					write_string("WELD\n",pcf_stream);
+					write_end_points( overlap_weld.point_1, overlap_weld.point_2, overlap_weld.diameter_1, overlap_weld.diameter_2, pcf_stream ); 
+					sprintf( skey_string, COMP_SKEY_FMT, "WST"); 
+					write_string( skey_string, pcf_stream );
+					sprintf( category_string, "    CATEGORY %s\n", "ERECTION"); 
+					write_string( category_string, pcf_stream );
+					additional_weld.erase(overlap_count);
+				}else
+				{
+					write_string("WELD\n",pcf_stream);
+					write_end_points( weld_endpoint_r, weld_endpoint_r, diameter, diameter, pcf_stream ); 
+					sprintf( skey_string, COMP_SKEY_FMT, "WST"); 
+					write_string( skey_string, pcf_stream );
+					sprintf( category_string, "    CATEGORY %s\n", "ERECTION"); 
+					write_string( category_string, pcf_stream );
+				}
+			}
+
 		}		
 	}
 	
